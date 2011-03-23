@@ -1,7 +1,7 @@
 Changes
 =======
 
-0.1 unreleased
+0.1 2011-03-23
 --------------
 
 * In lxml.cssselect, use the xpath 'A//B' (short for
