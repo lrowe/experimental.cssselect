@@ -1,12 +1,18 @@
 Changes
 =======
 
+0.3 2012-04-05
+--------------
+
+* Fix bug with ignorable spaces between css selector groups. This caused
+  extremely slow Diazo execution times.
+
 0.2 2012-04-04
 --------------
 
 * Make ``:contains()`` case sensitive for simplicity and speed.
 
-* Update to lxml master to fix problems with spaces in selector groups.
+* Update to lxml master to fix problems with ignorable spaces in selectors.
 
 0.1 2011-03-23
 --------------
