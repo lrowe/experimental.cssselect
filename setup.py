@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-version = '0.1'
+version = '0.2'
 name = 'experimental.cssselect'
 description = "Experimental version of lxml.cssselect"
 install_requires = [
@@ -15,7 +15,7 @@ setup(
     long_description=open("README.txt").read() + "\n\n" +
                      open("CHANGES.txt").read(),
     author='Laurence Rowe',
-    url='https://github.com/lrowe/lxml',
+    url='https://github.com/lrowe/experimental.cssselect',
     packages=find_packages('src'),
     package_dir={'':'src'},
     namespace_packages=[

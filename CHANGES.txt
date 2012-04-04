@@ -1,6 +1,13 @@
 Changes
 =======
 
+0.2 2012-04-04
+--------------
+
+* Make ``:contains()`` case sensitive for simplicity and speed.
+
+* Update to lxml master to fix problems with spaces in selector groups.
+
 0.1 2011-03-23
 --------------
 

@@ -1,3 +1,34 @@
+# Copyright (c) 2004 Ian Bicking. All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are
+# met:
+#
+# 1. Redistributions of source code must retain the above copyright
+# notice, this list of conditions and the following disclaimer.
+#
+# 2. Redistributions in binary form must reproduce the above copyright
+# notice, this list of conditions and the following disclaimer in
+# the documentation and/or other materials provided with the
+# distribution.
+#
+# 3. Neither the name of Ian Bicking nor the names of its contributors may
+# be used to endorse or promote products derived from this software
+# without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL IAN BICKING OR
+# CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+# EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+# PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+# PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+# LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+# NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+# SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
 """CSS Selectors based on XPath.
 
 This module supports selecting XML/HTML tags based on CSS selectors.
@@ -115,7 +146,7 @@ class Class(object):
     def xpath(self):
         sel_xpath = self.selector.xpath()
         sel_xpath.add_condition(
-            "contains(concat(' ', normalize-space(@class), ' '), %s)" % xpath_literal(' '+self.class_name+' '))
+            "@class and contains(concat(' ', normalize-space(@class), ' '), %s)" % xpath_literal(' '+self.class_name+' '))
         return sel_xpath
 
 class Function(object):
@@ -207,11 +238,12 @@ class Function(object):
 
     def _xpath_contains(self, xpath, expr):
         # text content, minus tags, must contain expr
+        # this selector was removed from the CSS3 spec
+        # case sensitive for speed, matching jQuery's implementation
         if isinstance(expr, Element):
             expr = expr._format_element()
-        xpath.add_condition('contains(css:lower-case(string(.)), %s)'
-                            % xpath_literal(expr.lower()))
-        # FIXME: Currently case insensitive matching doesn't seem to be happening
+        xpath.add_condition('contains(string(.), %s)'
+                            % xpath_literal(expr))
         return xpath
 
     def _xpath_not(self, xpath, expr):
@@ -221,13 +253,6 @@ class Function(object):
         # FIXME: should I do something about element_path?
         xpath.add_condition('not(%s)' % cond)
         return xpath
-
-def _make_lower_case(context, s):
-    return s.lower()
-
-ns = etree.FunctionNamespace('http://codespeak.net/lxml/css/')
-ns.prefix = 'css'
-ns['lower-case'] = _make_lower_case
 
 class Pseudo(object):
     """
@@ -269,8 +294,8 @@ class Pseudo(object):
         return xpath
 
     def _xpath_root(self, xpath):
-        # if this element is the root element
-        raise NotImplementedError
+        xpath.add_condition("not(parent::*)")
+        return xpath
 
     def _xpath_first_child(self, xpath):
         xpath.add_star_prefix()
@@ -376,23 +401,24 @@ class Attrib(object):
                                    % (attrib, xpath_literal(value)))
             #path.add_condition('%s != %s' % (attrib, xpath_literal(value)))
         elif self.operator == '~=':
-            path.add_condition("contains(concat(' ', normalize-space(%s), ' '), %s)" % (attrib, xpath_literal(' '+value+' ')))
+            path.add_condition("%s and contains(concat(' ', normalize-space(%s), ' '), %s)" % (attrib, attrib, xpath_literal(' '+value+' ')))
         elif self.operator == '|=':
             # Weird, but true...
-            path.add_condition('%s = %s or starts-with(%s, %s)' % (
+            path.add_condition('%s and (%s = %s or starts-with(%s, %s))' % (
+                attrib,
                 attrib, xpath_literal(value),
                 attrib, xpath_literal(value + '-')))
         elif self.operator == '^=':
-            path.add_condition('starts-with(%s, %s)' % (
-                attrib, xpath_literal(value)))
+            path.add_condition('%s and starts-with(%s, %s)' % (
+                attrib, attrib, xpath_literal(value)))
         elif self.operator == '$=':
             # Oddly there is a starts-with in XPath 1.0, but not ends-with
-            path.add_condition('substring(%s, string-length(%s)-%s) = %s'
-                               % (attrib, attrib, len(value)-1, xpath_literal(value)))
+            path.add_condition('%s and substring(%s, string-length(%s)-%s) = %s'
+                               % (attrib, attrib, attrib, len(value)-1, xpath_literal(value)))
         elif self.operator == '*=':
-            # FIXME: case sensitive?
-            path.add_condition('contains(%s, %s)' % (
-                attrib, xpath_literal(value)))
+            # Attribute selectors are case sensitive
+            path.add_condition('%s and contains(%s, %s)' % (
+                attrib, attrib, xpath_literal(value)))
         else:
             assert 0, ("Unknown operator: %r" % self.operator)
         return path
@@ -532,7 +558,7 @@ def css_to_xpath(css_expr, prefix='descendant-or-self::'):
                 prefix, match.group(1) or '*', match.group(2))
         match = _class_re.search(css_expr)
         if match is not None:
-            return "%s%s[contains(concat(' ', normalize-space(@class), ' '), ' %s ')]" % (
+            return "%s%s[@class and contains(concat(' ', normalize-space(@class), ' '), ' %s ')]" % (
                 prefix, match.group(1) or '*', match.group(2))
         css_expr = parse(css_expr)
     expr = css_expr.xpath()
@@ -693,6 +719,9 @@ def parse_selector(stream):
         elif peek in ('+', '>', '~'):
             # A combinator
             combinator = stream.next()
+            # Ignore optional whitespace after a combinator
+            while stream.peek() == ' ':
+                stream.next()
         else:
             combinator = ' '
         consumed = len(stream.used)
@@ -875,11 +904,13 @@ def tokenize(s):
         c = s[pos]
         c2 = s[pos:pos+2]
         if c2 in ('~=', '|=', '^=', '$=', '*=', '::', '!='):
+            if c2 == '::' and preceding_whitespace_pos > 0:
+                yield Token(' ', preceding_whitespace_pos)
             yield Token(c2, pos)
             pos += 2
             continue
         if c in '>+~,.*=[]()|:#':
-            if c in '.#[' and preceding_whitespace_pos > 0:
+            if c in ':.#[' and preceding_whitespace_pos > 0:
                 yield Token(' ', preceding_whitespace_pos)
             yield Token(c, pos)
             pos += 1
